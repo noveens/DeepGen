@@ -1,0 +1,5 @@
+Loading pre-trained..
+Epoch = 0, IPC = 1, EMA = True ; mean = 65.05, std = 4.89  
+Epoch = 10, IPC = 1, EMA = True ; mean = 68.46, std = 3.40  
+Epoch = 20, IPC = 1, EMA = True ; mean = 70.61, std = 5.48  
+Epoch = 30, IPC = 1, EMA = True ; mean = 68.10, std = 3.73  

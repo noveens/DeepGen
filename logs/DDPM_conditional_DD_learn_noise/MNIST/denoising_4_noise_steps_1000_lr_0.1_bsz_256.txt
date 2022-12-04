@@ -1,0 +1,23 @@
+Loading pre-trained..
+Epoch = 0, IPC = 1, EMA = True ; mean = 55.18, std = 2.67  
+Epoch = 10, IPC = 1, EMA = True ; mean = 78.89, std = 1.19  
+Epoch = 20, IPC = 1, EMA = True ; mean = 85.20, std = 0.87  
+Loading pre-trained..
+Epoch = 0, IPC = 1, EMA = True ; mean = 40.35, std = 2.80  
+Epoch = 0, IPC = 1, EMA = True ; mean = 39.73, std = 2.46  
+Epoch = 2, IPC = 1, EMA = True ; mean = 78.53, std = 1.76  
+Epoch = 2, IPC = 1, EMA = True ; mean = 79.18, std = 2.22  
+Epoch = 4, IPC = 1, EMA = True ; mean = 82.83, std = 1.13  
+Epoch = 4, IPC = 1, EMA = True ; mean = 83.67, std = 1.30  
+Epoch = 6, IPC = 1, EMA = True ; mean = 84.75, std = 0.96  
+Epoch = 6, IPC = 1, EMA = True ; mean = 84.10, std = 1.27  
+Epoch = 8, IPC = 1, EMA = True ; mean = 82.85, std = 0.99  
+Epoch = 8, IPC = 1, EMA = True ; mean = 82.42, std = 1.12  
+Epoch = 10, IPC = 1, EMA = True ; mean = 84.98, std = 1.35  
+Epoch = 10, IPC = 1, EMA = True ; mean = 86.18, std = 1.61  
+Epoch = 12, IPC = 1, EMA = True ; mean = 83.15, std = 1.71  
+Epoch = 12, IPC = 1, EMA = True ; mean = 83.84, std = 0.89  
+Epoch = 14, IPC = 1, EMA = True ; mean = 82.61, std = 1.01  
+Epoch = 14, IPC = 1, EMA = True ; mean = 82.52, std = 1.03  
+Epoch = 16, IPC = 1, EMA = True ; mean = 84.16, std = 1.08  
+Epoch = 16, IPC = 1, EMA = True ; mean = 84.52, std = 1.58  
