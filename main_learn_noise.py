@@ -14,13 +14,11 @@ def print_and_log(string):
     f = open(LOG_FILE, 'a') ; f.write(string + "\n") ; f.close()
     print(string)
 
-def evaluate_data_quality(config, noise_learner, use_ema = False, IPC = 1, DENOISING_STEPS = 10, epoch=None):
+def evaluate_data_quality(config, testloader, noise_learner, use_ema = False, IPC = 1, DENOISING_STEPS = 10, epoch=None):
     # Do data distillation evaluation
     model_eval_pool = get_eval_pool('S', 'ConvNet', 'ConvNet')
     accs_all_exps = {}
     for key in model_eval_pool: accs_all_exps[key] = []
-
-    *_, dst_train, dst_test, testloader = get_dataset(config.dataset, config.data_path)
 
     # train_images = defaultdict(list)
     # for i in range(len(dst_train)): train_images[dst_train[i][1]].append(torch.unsqueeze(dst_train[i][0], dim=0))
@@ -30,7 +28,7 @@ def evaluate_data_quality(config, noise_learner, use_ema = False, IPC = 1, DENOI
     fig = get_combined_image_plot(test_images[:20].numpy(), 2)
     fig.savefig(f"results/{config.run_name}/{config.dataset}/test.png")
 
-    print(torch.mean(test_images), torch.std(test_images), test_images.min(), test_images.max())
+    # print(torch.mean(test_images), torch.std(test_images), test_images.min(), test_images.max())
 
     for exp in range(5):
         labels = []
@@ -43,8 +41,10 @@ def evaluate_data_quality(config, noise_learner, use_ema = False, IPC = 1, DENOI
         # distilled_y = torch.tensor(labels).long().cuda()
 
         # Sample some images from DDPM and the learned noise
-        distilled_x, distilled_y = noise_learner.sample(noise_steps_eval=DENOISING_STEPS, use_ema=use_ema, IPC=IPC, fixed_seed=False)
-        if exp == 0: print(torch.mean(distilled_x), torch.std(distilled_x), torch.min(noise_learner.learned_noise), torch.max(noise_learner.learned_noise))
+        distilled_x, distilled_y = noise_learner.sample(
+			noise_steps_eval=DENOISING_STEPS, use_ema=use_ema, IPC=IPC, fixed_seed=False
+        )
+        # if exp == 0: print(torch.mean(distilled_x), torch.std(distilled_x), torch.min(noise_learner.learned_noise), torch.max(noise_learner.learned_noise))
 
         # Plotting them
         fig = get_combined_image_plot(distilled_x.cpu().numpy(), IPC)
@@ -82,14 +82,19 @@ BEST CONFIGS:
         - DENOISING_STEPS = 5, batch_size = 4096, lr = 0.03, noise_clip = 1.5, num_dm_iter = 10 (for diverse gen)
     - IPC = 10: 
         - DENOISING_STEPS = 5, batch_size = 4096, lr = 0.1, noise_clip = 3.0, num_dm_iter = 10 (for specific gen)
+        
+- CIFAR:
+	- IPC = 10:
+		- DENOISING_STEPS = 10, batch_size = 4096, lr = 0.05, noise_clip = 1, num_dm_iter = 1 (for specific gen)
 """
 
 # NOTE: Having low values will make generation easier but less diverse
-DENOISING_STEPS = 10
+DENOISING_STEPS = 5
+DD_IPC = 1
 
 config = SimpleNamespace(    
-    run_name = "DDPM_conditional_DD_learn_noise",
-    dataset = "CIFAR10",
+    run_name = "DDPM_conditional_DD_learn_noise_gen",
+    dataset = "MNIST",
     img_size = 32, # MNIST will be padded to be 32 x 32
     noise_steps=1000, # NOTE: 1000
     noise_steps_eval=DENOISING_STEPS,
@@ -102,12 +107,12 @@ config = SimpleNamespace(
     slice_size = 1,
     do_validation = True,
     fp16 = False, # True
-    log_every_epoch = 10, # 10 # Will save model and images after this many epochs
+    log_every_epoch = 5, # 10 # Will save model and images after this many epochs
     num_workers=16,
     # lr = 3e-4,
-    lr = 0.01, # 5e-3,
+    lr = 0.1, # 5e-3,
     noise_clip = 1, # NOTE: Having large values will make generation easier but less diverse
-    num_dm_iter = 1, # NOTE: Having large will give more stable & diverse results
+    num_dm_iter = 50, # NOTE: Having large will give more stable & diverse results
 )
 config.epochs, config.num_channels = { "CIFAR10": (140, 3), "MNIST": (60, 1) }[config.dataset]
 
@@ -119,7 +124,6 @@ diffuser = Diffusion(
     num_classes=config.num_classes,
     c_in=config.num_channels,
     c_out=config.num_channels,
-    DD_IPC = 1
 )
 
 LOG_FILE = f"./logs/{config.run_name}/{config.dataset}/denoising_{DENOISING_STEPS}_clip_{config.noise_clip}_dm_iter_{config.num_dm_iter}_noise_steps_{config.noise_steps}_lr_{config.lr}_bsz_{config.batch_size}.txt"
@@ -132,11 +136,13 @@ diffuser.load(f"./models_milestone_2/DDPM_conditional/{config.dataset}/", config
 noise_learner = NoiseLearner(
     args=config,
     diffuser=diffuser,
-    DD_IPC=diffuser.DD_IPC,
+    DD_IPC=DD_IPC,
     DENOISING_STEPS=DENOISING_STEPS
 )
 
-pbar = progress_bar(range(100), total=100, leave=True)
+*_, dst_train, dst_test, testloader = get_dataset(config.dataset, config.data_path)
+
+pbar = progress_bar(range(1, 101), total=100, leave=True)
 for epoch in pbar:
     # if epoch % 2 == 0: 
     #     noise_learner.log_images(epoch=epoch)
@@ -147,7 +153,7 @@ for epoch in pbar:
         noise_learner.save_model(epoch=epoch)
         # evaluate_data_quality(config, noise_learner, use_ema = False, IPC = diffuser.DD_IPC, DENOISING_STEPS=DENOISING_STEPS)
         # evaluate_data_quality(config, noise_learner, use_ema = True, IPC = diffuser.DD_IPC, DENOISING_STEPS=DENOISING_STEPS, epoch=epoch)
-        evaluate_data_quality(config, noise_learner, use_ema = True, IPC = diffuser.DD_IPC, DENOISING_STEPS=200, epoch=epoch)
+        evaluate_data_quality(config, testloader, noise_learner, use_ema = True, IPC = DD_IPC * config.num_dm_iter, DENOISING_STEPS=100, epoch=epoch)
 
     avg_loss = noise_learner.one_epoch(epoch=epoch)
     pbar.comment = f"MSE={np.mean(avg_loss):2.3f}"
@@ -155,9 +161,9 @@ for epoch in pbar:
 print_and_log("FINAL (NO EMA):")
 for ipc in [ 1, 10, 50 ]:
     # evaluate_data_quality(config, noise_learner, use_ema = False, IPC = ipc, DENOISING_STEPS=DENOISING_STEPS, epoch='final')
-    evaluate_data_quality(config, noise_learner, use_ema = False, IPC = ipc, DENOISING_STEPS=200, epoch='final')
+    evaluate_data_quality(config, testloader, noise_learner, use_ema = False, IPC = ipc, DENOISING_STEPS=100, epoch='final')
 
 print_and_log("FINAL (WITH EMA):")
 for ipc in [ 1, 10, 50 ]:
     # evaluate_data_quality(config, noise_learner, use_ema = True, IPC = ipc, DENOISING_STEPS=DENOISING_STEPS, epoch='final')
-    evaluate_data_quality(config, noise_learner, use_ema = True, IPC = ipc, DENOISING_STEPS=200, epoch='final')
+    evaluate_data_quality(config, testloader, noise_learner, use_ema = True, IPC = ipc, DENOISING_STEPS=100, epoch='final')

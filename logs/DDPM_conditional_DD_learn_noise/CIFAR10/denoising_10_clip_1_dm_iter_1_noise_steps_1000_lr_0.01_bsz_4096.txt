@@ -6,3 +6,9 @@ Epoch = 30, IPC = 1, EMA = True ; mean = 21.89, std = 0.87
 Epoch = 40, IPC = 1, EMA = True ; mean = 20.27, std = 1.18  
 Loading pre-trained..
 Epoch = 0, IPC = 1, EMA = True ; mean = 15.93, std = 1.74  
+Loading pre-trained..
+Loading pre-trained..
+Epoch = 0, IPC = 1, EMA = True ; mean = 16.19, std = 1.54  
+Loading pre-trained..
+Epoch = 0, IPC = 1, EMA = True ; mean = 15.34, std = 1.24  
+Epoch = 10, IPC = 1, EMA = True ; mean = 18.91, std = 0.92  

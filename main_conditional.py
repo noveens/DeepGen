@@ -9,7 +9,11 @@ from diffusion_models.ddpm_conditional import Diffusion
 from utils import get_dataset, get_network, get_eval_pool, evaluate_synset, get_daparam #, DiffAugment, ParamDiffAug, epoch, get_time
 from plotter_utils import get_combined_image_plot
 
-def evaluate_data_quality(config, diffuser, use_ema = False, IPC = 1):
+def print_and_log(string):
+    f = open(LOG_FILE, 'a') ; f.write(string + "\n") ; f.close()
+    print(string)
+
+def evaluate_data_quality(config, diffuser, use_ema = False, IPC = 1, epoch=None, DENOISING_STEPS=100):
     # Do data distillation evaluation
     model_eval_pool = get_eval_pool('S', 'ConvNet', 'ConvNet')
     accs_all_exps = {}
@@ -25,7 +29,7 @@ def evaluate_data_quality(config, diffuser, use_ema = False, IPC = 1):
     fig = get_combined_image_plot(test_images[:20].numpy(), 2)
     fig.savefig(f"results/{config.run_name}/{config.dataset}/test.png")
 
-    for exp in range(1):
+    for exp in range(5):
         labels = []
         for i in range(config.num_classes): labels += [ i ] * IPC
         
@@ -37,7 +41,9 @@ def evaluate_data_quality(config, diffuser, use_ema = False, IPC = 1):
 
         # Sample some images from DDPM
         distilled_y = torch.tensor(labels).long().cuda()
-        distilled_x = diffuser.sample(use_ema=use_ema, labels=distilled_y, noise_steps_eval=100)
+        distilled_x = diffuser.sample(
+            use_ema=use_ema, labels=distilled_y, noise_steps_eval=DENOISING_STEPS, fixed_seed=False
+        )
 
         # Plotting them
         fig = get_combined_image_plot(distilled_x.cpu().numpy(), IPC)
@@ -46,7 +52,7 @@ def evaluate_data_quality(config, diffuser, use_ema = False, IPC = 1):
         # Let's train a convnet on them
         for model_eval in model_eval_pool:
             accs, accs_train = [], []
-            for it_eval in range(5):
+            for it_eval in range(2):
                 net_eval = get_network(model_eval, config.num_channels, 10, { "CIFAR10": (32, 32), "MNIST": (28, 28) }[config.dataset]).to(config.device) # get a random model
                 image_syn_eval, label_syn_eval = copy.deepcopy(distilled_x.detach()), copy.deepcopy(distilled_y.detach()) # avoid any unaware modification
                 config.dc_aug_param = get_daparam(config.dataset, 'ConvNet', model_eval, IPC)
@@ -59,7 +65,8 @@ def evaluate_data_quality(config, diffuser, use_ema = False, IPC = 1):
     # print('==================== Final Results ====================')
     for key in model_eval_pool:
         accs = accs_all_exps[key]
-        print(f'IPC = {IPC}, EMA = {use_ema} ; mean = {np.mean(accs)*100:.2f}, std = {np.std(accs)*100:.2f}')
+        print_and_log(f'Epoch = {epoch}, IPC = {IPC}, EMA = {use_ema} ; mean = {np.mean(accs)*100:.2f}, std = {np.std(accs)*100:.2f}  ')
+        # print(f'IPC = {IPC}, EMA = {use_ema} ; mean = {np.mean(accs)*100:.2f}, std = {np.std(accs)*100:.2f}')
     # print()
 
 """
@@ -67,26 +74,44 @@ THINGS I COULD DO:
 - (EASY) cross-architecture evaluation
 """
 
+"""
+BEST CONFIGS (Gen-Opt):
+- MNIST:
+    - IPC = 1: 
+        - DENOISING_STEPS = 10, batch_size = 8192, lr = 3e-4, num_dm_iter = 10
+    - IPC = 10: 
+        - DENOISING_STEPS = 10, batch_size = 8192, lr = 3e-4, num_dm_iter = 5
+        
+- CIFAR:
+    - IPC = 1: 
+        - DENOISING_STEPS = 10, batch_size = 8192, lr = 3e-4, num_dm_iter = 10
+	- IPC = 10:
+		- DENOISING_STEPS = 10, batch_size = 4096, lr = 0.05, num_dm_iter = 1
+"""
+
 # Diffusion model config  
+DENOISING_STEPS = 10
+FINETUNE = True
+
 config = SimpleNamespace(    
-    run_name = "DDPM_conditional",
+    run_name = "DDPM_conditional_Gen_Opt",
     dataset = "CIFAR10",
     img_size = 32, # MNIST will be padded to be 32 x 32
     noise_steps=1000, # NOTE: 1000
-    noise_steps_eval=100,
-    truncation_steps=100, # last 10
+    noise_steps_eval=DENOISING_STEPS,
+    truncation_steps=DENOISING_STEPS, # last 10
     seed = 42,
-    batch_size = 5000,
+    batch_size = 100,
     num_classes = 10,
     data_path = "./data/",
     device = "cuda",
     slice_size = 1,
     do_validation = True,
     fp16 = False, # True
-    log_every_epoch = 1, # 10 # Will save model and images after this many epochs
+    log_every_epoch = 10, # 10 # Will save model and images after this many epochs
     num_workers=16,
-    # lr = 3e-4,
-    lr = 1e-3,
+    lr = 3e-4,
+    num_dm_iter = 10
 )
 config.epochs, config.num_channels = { "CIFAR10": (140, 3), "MNIST": (60, 1) }[config.dataset]
 
@@ -98,41 +123,53 @@ diffuser = Diffusion(
     num_classes=config.num_classes,
     c_in=config.num_channels,
     c_out=config.num_channels,
-    DD_IPC = 10
+    FINETUNE = FINETUNE
 )
-# diffuser.prepare(config)
 
-# Train or load
-if not os.path.exists(f"./models/{config.run_name}/{config.dataset}/ckpt_{config.epochs}.pt"):
+LOG_FILE = f"./logs/{config.run_name}/{config.dataset}/denoising_{DENOISING_STEPS}_dm_iter_{config.num_dm_iter}_noise_steps_{config.noise_steps}_lr_{config.lr}_bsz_{config.batch_size}.txt"
+os.makedirs(f"./logs/{config.run_name}/{config.dataset}/", exist_ok=True)
 
-    last_ckpt = 0
-    if len(os.listdir(f"./models/{config.run_name}/{config.dataset}/")) > 0:
-        last_ckpt = 60 # max(list(map(lambda x: int(x.split("_")[-1][:-3]), os.listdir(f"./models/{config.run_name}/{config.dataset}/"))))
-        diffuser.load(f"./models/{config.run_name}/{config.dataset}/", last_ckpt)
-        
-        # print("INIT-LOADED (NO EMA):")
-        # evaluate_data_quality(config, diffuser, use_ema = False, IPC = diffuser.DD_IPC)
+print_and_log("Loading pre-trained..")
+diffuser.load(f"./models_milestone_2/DDPM_conditional/{config.dataset}/", config.epochs)
 
-    for epoch in progress_bar(range(last_ckpt+1, config.epochs), total=config.epochs - last_ckpt, leave=True):
-        print(f"Starting epoch {epoch}:")
-        _  = diffuser.one_epoch(epoch=epoch, train=True)
+# Gen-Opt
+if FINETUNE:
+    print_and_log("FINETUNING..")
+    pbar = progress_bar(range(config.epochs), total=config.epochs, leave=True)
+    for epoch in pbar:
+        avg_loss = diffuser.one_epoch(epoch, train=True)
+        pbar.comment = f"MSE={avg_loss.item():2.3f}"   
         
         # log predicitons
         if epoch % config.log_every_epoch == 0:
             diffuser.log_images(epoch=epoch)
             diffuser.save_model(epoch=epoch)
-            evaluate_data_quality(config, diffuser, use_ema = False, IPC = diffuser.DD_IPC)
-            evaluate_data_quality(config, diffuser, use_ema = True, IPC = diffuser.DD_IPC)
+            evaluate_data_quality(config, diffuser, use_ema = True, IPC = 1, DENOISING_STEPS=1000, epoch=epoch)
+            evaluate_data_quality(config, diffuser, use_ema = True, IPC = 10, DENOISING_STEPS=1000, epoch=epoch)
+
+# BASE GENERATOR TRAINING
 else:
-    print("Loading pre-trained..")
-    diffuser.load(f"./models/{config.run_name}/{config.dataset}/", config.epochs)
+    print_and_log("PRE-TRAINING..")
+    if not os.path.exists(f"./models/{config.run_name}/{config.dataset}/ckpt_{config.epochs}.pt"):
+        last_ckpt = 0
+        pbar = progress_bar(range(last_ckpt+1, config.epochs), total=config.epochs - last_ckpt, leave=True)
+        for epoch in pbar:
+            print_and_log(f"Starting epoch {epoch}:")
+            avg_loss = diffuser.one_epoch(epoch, train=True)
+            pbar.comment = f"MSE={avg_loss.item():2.3f}"   
+            
+            # log predicitons
+            if epoch % config.log_every_epoch == 0:
+                diffuser.log_images(epoch=epoch)
+                diffuser.save_model(epoch=epoch)
+    else:
+        print_and_log("Loading pre-trained..")
+        diffuser.load(f"./models/{config.run_name}/{config.dataset}/", config.epochs)
 
-print("FINAL (NO EMA):")
-evaluate_data_quality(config, diffuser, use_ema = False, IPC = 1)
-evaluate_data_quality(config, diffuser, use_ema = False, IPC = 10)
-evaluate_data_quality(config, diffuser, use_ema = False, IPC = 50)
+print_and_log("FINAL (WITH EMA):")
+for ipc in [ 1, 10, 50 ]:
+    evaluate_data_quality(config, diffuser, use_ema = True, IPC = ipc, DENOISING_STEPS=1000, epoch='final')
 
-print("FINAL (WITH EMA):")
-evaluate_data_quality(config, diffuser, use_ema = True, IPC = 1)
-evaluate_data_quality(config, diffuser, use_ema = True, IPC = 10)
-evaluate_data_quality(config, diffuser, use_ema = True, IPC = 50)
+print_and_log("FINAL (NO EMA):")
+for ipc in [ 1, 10, 50 ]:
+    evaluate_data_quality(config, diffuser, use_ema = False, IPC = ipc, DENOISING_STEPS=1000, epoch='final')

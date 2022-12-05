@@ -1,6 +1,6 @@
 import os, shutil, random
 from pathlib import Path
-from kaggle import api
+# from kaggle import api
 import zipfile
 import torch
 import torchvision
